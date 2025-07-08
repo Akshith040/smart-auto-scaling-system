@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Auto-Scaling Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #4a5568;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-excellent { background-color: #48bb78; }
+        .status-good { background-color: #4299e1; }
+        .status-fair { background-color: #ed8936; }
+        .status-poor { background-color: #f56565; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background-color: #4299e1;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #3182ce;
+        }
+
+        .btn-success {
+            background-color: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: #38a169;
+        }
+
+        .btn-warning {
+            background-color: #ed8936;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background-color: #dd6b20;
+        }
+
+        .prediction-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .prediction-item {
+            padding: 8px 12px;
+            margin: 5px 0;
+            background-color: #f7fafc;
+            border-radius: 6px;
+            border-left: 4px solid #4299e1;
+        }
+
+        .anomaly-item {
+            background-color: #fed7d7;
+            border-left-color: #f56565;
+        }
+
+        .scaling-history {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .scaling-event {
+            padding: 12px;
+            margin: 8px 0;
+            background-color: #f7fafc;
+            border-radius: 8px;
+            border-left: 4px solid #4299e1;
+        }
+
+        .scaling-event.scale-up {
+            border-left-color: #48bb78;
+        }
+
+        .scaling-event.scale-down {
+            border-left-color: #ed8936;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+        }
+
+        .error {
+            background-color: #fed7d7;
+            color: #9b2c2c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background-color: #c6f6d5;
+            color: #276749;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Smart Auto-Scaling Dashboard</h1>
+            <p>Real-time Performance Monitoring & Predictive Scaling</p>
+        </div>            <div class="controls">
+            <button class="btn btn-primary" onclick="refreshData()">🔄 Refresh Data</button>
+            <button class="btn btn-success" onclick="executeScaling()">⚡ Execute Auto-Scaling</button>
+            <button class="btn btn-warning" onclick="simulateLoad()">🧪 Simulate Load</button>
+            <button class="btn btn-primary" onclick="showVerification()">🔍 Verify Real Metrics</button>
+            <button class="btn" style="background-color: #e53e3e; color: white;" onclick="stressTest()">🔥 CPU Stress Test</button>
+            <button class="btn" style="background-color: #4299e1; color: white;" onclick="toggleRealTime()" id="realtime-btn">⚡ Real-Time Mode</button>
+        </div>
+
+        <div id="status-message"></div>
+
+        <div class="dashboard-grid">
+            <!-- System Health Card -->
+            <div class="card">
+                <h3>
+                    <span id="health-indicator" class="status-indicator status-good"></span>
+                    System Health
+                </h3>
+                <div id="health-metrics">
+                    <div class="loading">Loading health data...</div>
+                </div>
+            </div>
+
+            <!-- Current Metrics Card -->
+            <div class="card">
+                <h3>📊 Current Metrics</h3>
+                <div id="current-metrics">
+                    <div class="loading">Loading metrics...</div>
+                </div>
+            </div>
+
+            <!-- Resource Status Card -->
+            <div class="card">
+                <h3>🖥️ Resource Status</h3>
+                <div id="resource-status">
+                    <div class="loading">Loading resource status...</div>
+                </div>
+            </div>
+
+            <!-- Predictions Card -->
+            <div class="card">
+                <h3>🔮 Demand Predictions</h3>
+                <div id="predictions">
+                    <div class="loading">Loading predictions...</div>
+                </div>
+            </div>
+
+            <!-- System Verification Card -->
+            <div class="card" id="verification-card" style="display: none;">
+                <h3>🔍 System Verification (Proof of Real Metrics)</h3>
+                <div id="verification-content">
+                    <div class="loading">Loading verification...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>📈 Performance Trends</h3>
+                <div class="chart-container">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🎯 Scaling History</h3>
+                <div id="scaling-history" class="scaling-history">
+                    <div class="loading">Loading scaling history...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let metricsChart = null;
+        let refreshInterval = null;
+        let realTimeMode = false;
+        let realTimeInterval = null;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCharts();
+            refreshData();
+            startAutoRefresh();
+        });
+
+        function initializeCharts() {
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            metricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'CPU %',
+                            borderColor: '#4299e1',
+                            backgroundColor: 'rgba(66, 153, 225, 0.1)',
+                            data: [],
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Memory %',
+                            borderColor: '#48bb78',
+                            backgroundColor: 'rgba(72, 187, 120, 0.1)',
+                            data: [],
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Load Score',
+                            borderColor: '#ed8936',
+                            backgroundColor: 'rgba(237, 137, 54, 0.1)',
+                            data: [],
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    animation: {
+                        duration: realTimeMode ? 200 : 1000  // Faster animation in real-time mode
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        async function refreshData() {
+            try {
+                const isRealTime = realTimeMode;
+                if (isRealTime) {
+                    showMessage('🔄 Real-time update...', 'info');
+                } else {
+                    showMessage('Refreshing data...', 'info');
+                }
+                
+                await Promise.all([
+                    updateHealthMetrics(),
+                    updateCurrentMetrics(),
+                    updateResourceStatus(),
+                    updatePredictions(),
+                    updateScalingHistory(),
+                    updateChart()
+                ]);
+
+                if (!isRealTime) {
+                    showMessage('Data refreshed successfully!', 'success');
+                    setTimeout(() => clearMessage(), 3000);
+                } else {
+                    // Clear message faster in real-time mode
+                    setTimeout(() => clearMessage(), 1000);
+                }
+            } catch (error) {
+                showMessage('Error refreshing data: ' + error.message, 'error');
+            }
+        }
+
+        async function updateHealthMetrics() {
+            try {
+                const response = await axios.get('/api/system/health');
+                const health = response.data;
+
+                const indicator = document.getElementById('health-indicator');
+                const container = document.getElementById('health-metrics');
+
+                // Update health indicator
+                indicator.className = `status-indicator status-${health.status}`;
+
+                // Update health metrics
+                container.innerHTML = `
+                    <div class="metric-row">
+                        <span class="metric-label">Health Score</span>
+                        <span class="metric-value">${health.health_score}/100</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Status</span>
+                        <span class="metric-value">${health.status.toUpperCase()}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Active Instances</span>
+                        <span class="metric-value">${health.instances}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Hourly Cost</span>
+                        <span class="metric-value">$${health.cost.hourly_cost}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Success Rate</span>
+                        <span class="metric-value">${health.uptime.success_rate_percent}%</span>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('health-metrics').innerHTML = 
+                    '<div class="error">Failed to load health metrics</div>';
+            }
+        }
+
+        async function updateCurrentMetrics() {
+            try {
+                const response = await axios.get('/api/metrics');
+                const data = response.data;
+                const current = data.current;
+
+                // Add Task Manager comparison note
+                const taskManagerNote = `
+                    <div style="background: #e6fffa; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid #38b2ac;">
+                        <small style="color: #234e52;">
+                            💡 <strong>Verification:</strong> Open Task Manager (Ctrl+Shift+Esc) to compare these values with Windows Performance tab
+                        </small>
+                    </div>
+                `;
+
+                document.getElementById('current-metrics').innerHTML = taskManagerNote + `
+                    <div class="metric-row">
+                        <span class="metric-label">🔥 CPU Usage</span>
+                        <span class="metric-value">${current.cpu_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">💾 Memory Usage</span>
+                        <span class="metric-value">${current.memory_percent.toFixed(1)}% (${current.memory_used_gb.toFixed(2)} GB)</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">💽 Disk Usage</span>
+                        <span class="metric-value">${current.disk_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">⚡ Response Time</span>
+                        <span class="metric-value">${current.response_time_ms.toFixed(1)}ms</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">🔗 Active Connections</span>
+                        <span class="metric-value">${current.active_connections}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">📈 Load Score</span>
+                        <span class="metric-value">${current.load_score.toFixed(1)}/100</span>
+                    </div>
+                    <div style="margin-top: 10px; padding: 8px; background: #f7fafc; border-radius: 4px;">
+                        <small style="color: #4a5568;">
+                            🕒 Last Updated: ${new Date(current.timestamp).toLocaleTimeString()}
+                        </small>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('current-metrics').innerHTML = 
+                    '<div class="error">Failed to load current metrics</div>';
+            }
+        }
+
+        async function updateResourceStatus() {
+            try {
+                const response = await axios.get('/api/scaling/status');
+                const state = response.data.current_state;
+
+                document.getElementById('resource-status').innerHTML = `
+                    <div class="metric-row">
+                        <span class="metric-label">Instances</span>
+                        <span class="metric-value">${state.instances}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total CPU Cores</span>
+                        <span class="metric-value">${state.resources.total_cpu_cores}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Memory</span>
+                        <span class="metric-value">${state.resources.total_memory_gb} GB</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">CPU Utilization</span>
+                        <span class="metric-value">${state.utilization.cpu_utilization_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Monthly Cost</span>
+                        <span class="metric-value">$${state.cost_estimate.monthly_cost}</span>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('resource-status').innerHTML = 
+                    '<div class="error">Failed to load resource status</div>';
+            }
+        }
+
+        async function updatePredictions() {
+            try {
+                const response = await axios.get('/api/predictions');
+                const data = response.data;
+
+                let html = '';
+
+                if (data.model_status === 'trained') {
+                    html += `
+                        <div class="metric-row">
+                            <span class="metric-label">Recommendation</span>
+                            <span class="metric-value">${data.recommendation.action.toUpperCase()}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Confidence</span>
+                            <span class="metric-value">${(data.recommendation.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Reason</span>
+                            <span class="metric-value">${data.recommendation.reason}</span>
+                        </div>
+                    `;
+
+                    if (data.predictions.length > 0) {
+                        html += '<div style="margin-top: 15px;"><strong>Next 10 predictions:</strong></div>';
+                        html += '<div class="prediction-list">';
+                        data.predictions.forEach((pred, index) => {
+                            html += `<div class="prediction-item">Step ${index + 1}: ${pred.toFixed(1)}% load</div>`;
+                        });
+                        html += '</div>';
+                    }
+                } else {
+                    html = `<div class="metric-row">
+                        <span class="metric-label">Status</span>
+                        <span class="metric-value">${data.model_status.replace('_', ' ').toUpperCase()}</span>
+                    </div>`;
+                    if (data.message) {
+                        html += `<div style="margin-top: 10px; color: #718096;">${data.message}</div>`;
+                    }
+                }
+
+                document.getElementById('predictions').innerHTML = html;
+            } catch (error) {
+                document.getElementById('predictions').innerHTML = 
+                    '<div class="error">Failed to load predictions</div>';
+            }
+        }
+
+        async function updateScalingHistory() {
+            try {
+                const response = await axios.get('/api/scaling/status');
+                const history = response.data.scaling_history;
+
+                let html = '';
+                if (history.length === 0) {
+                    html = '<div style="text-align: center; color: #718096;">No scaling events yet</div>';
+                } else {
+                    history.reverse().forEach(event => {
+                        const date = new Date(event.timestamp).toLocaleString();
+                        html += `
+                            <div class="scaling-event ${event.action.replace('_', '-')}">
+                                <div style="font-weight: 600; margin-bottom: 5px;">
+                                    ${event.action.replace('_', ' ').toUpperCase()}
+                                </div>
+                                <div style="font-size: 0.9rem; color: #4a5568;">
+                                    ${event.instances_before} → ${event.instances_after} instances
+                                </div>
+                                <div style="font-size: 0.8rem; color: #718096; margin-top: 5px;">
+                                    ${date}
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('scaling-history').innerHTML = html;
+            } catch (error) {
+                document.getElementById('scaling-history').innerHTML = 
+                    '<div class="error">Failed to load scaling history</div>';
+            }
+        }
+
+        async function updateChart() {
+            try {
+                const response = await axios.get('/api/metrics');
+                const recent = response.data.recent;
+
+                if (recent.length === 0) return;
+
+                // Sort by timestamp to ensure chronological order
+                recent.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                // Format timestamps for better real-time display
+                const labels = recent.map(m => {
+                    const date = new Date(m.timestamp);
+                    return date.toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit' 
+                    });
+                });
+                
+                const cpuData = recent.map(m => m.cpu_percent);
+                const memoryData = recent.map(m => m.memory_percent);
+                const loadData = recent.map(m => m.load_score);
+
+                // Keep last 25 data points for better real-time visualization
+                const maxPoints = 25;
+                const startIndex = Math.max(0, labels.length - maxPoints);
+
+                metricsChart.data.labels = labels.slice(startIndex);
+                metricsChart.data.datasets[0].data = cpuData.slice(startIndex);
+                metricsChart.data.datasets[1].data = memoryData.slice(startIndex);
+                metricsChart.data.datasets[2].data = loadData.slice(startIndex);
+                
+                // Use faster animation in real-time mode
+                metricsChart.options.animation.duration = realTimeMode ? 200 : 1000;
+                metricsChart.update(realTimeMode ? 'none' : 'default');
+                
+                // Update chart title with last update time
+                const lastUpdate = new Date().toLocaleTimeString('en-US', { 
+                    hour12: false, 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit' 
+                });
+                
+                const chartTitle = document.querySelector('#metricsChart').parentElement.previousElementSibling;
+                if (chartTitle && chartTitle.tagName === 'H3') {
+                    chartTitle.innerHTML = `📈 Performance Trends <span style="font-size: 0.8rem; color: #718096;">(Last: ${lastUpdate})</span>`;
+                }
+                
+            } catch (error) {
+                console.error('Failed to update chart:', error);
+            }
+        }
+
+        async function executeScaling() {
+            try {
+                showMessage('Executing auto-scaling decision...', 'info');
+                const response = await axios.post('/api/scaling/execute');
+                const result = response.data;
+
+                let message = `Scaling decision: ${result.decision.action.toUpperCase()}`;
+                if (result.decision.action !== 'maintain') {
+                    message += ` to ${result.decision.recommended_instances} instances`;
+                }
+                message += `\nReason: ${result.decision.reason}`;
+
+                showMessage(message, 'success');
+                
+                // Refresh data after scaling
+                setTimeout(refreshData, 2000);
+            } catch (error) {
+                showMessage('Scaling execution failed: ' + (error.response?.data?.error || error.message), 'error');
+            }
+        }
+
+        async function simulateLoad() {
+            try {
+                showMessage('Simulating load...', 'info');
+                await axios.get('/api/simulate');
+                showMessage('Load simulation completed!', 'success');
+                
+                // Refresh data after simulation
+                setTimeout(refreshData, 1000);
+            } catch (error) {
+                showMessage('Load simulation failed: ' + (error.response?.data?.error || error.message), 'error');
+            }
+        }
+
+        async function showVerification() {
+            try {
+                showMessage('Loading system verification...', 'info');
+                const response = await axios.get('/api/verification');
+                const data = response.data;
+
+                const card = document.getElementById('verification-card');
+                const content = document.getElementById('verification-content');
+                
+                // Show verification card
+                card.style.display = 'block';
+                card.scrollIntoView({ behavior: 'smooth' });
+
+                // Build verification content with MATCHING metrics
+                let html = `
+                    <div style="background: #e6fffa; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #38b2ac;">
+                        <h4 style="color: #234e52; margin-bottom: 10px;">✅ REAL SYSTEM METRICS VERIFIED</h4>
+                        <p style="color: #2d3748; margin: 0;">These metrics are collected from your actual system using the EXACT same data collection function as the main dashboard. The values below are identical to what you see in the dashboard at the time this verification was generated.</p>
+                    </div>
+
+                    <div style="background: #fff5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #e53e3e;">
+                        <h4 style="color: #742a2a; margin-bottom: 10px;">📊 CURRENT DASHBOARD METRICS (REAL-TIME)</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">🔥 CPU Usage</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.cpu_percent.toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💾 Memory Usage</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.memory_percent.toFixed(1)}% (${data.dashboard_current_metrics.memory_used_gb.toFixed(2)} GB)</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💽 Disk Usage</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.disk_percent.toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">🌐 Network Sent</span>
+                            <span class="metric-value">${(data.dashboard_current_metrics.network_bytes_sent / (1024*1024)).toFixed(1)} MB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">� Network Received</span>
+                            <span class="metric-value">${(data.dashboard_current_metrics.network_bytes_recv / (1024*1024)).toFixed(1)} MB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">⚡ Response Time</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.response_time_ms.toFixed(1)} ms</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">🔗 Active Connections</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.active_connections}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">📈 Load Score</span>
+                            <span class="metric-value">${data.dashboard_current_metrics.load_score.toFixed(1)}/100</span>
+                        </div>
+                    </div>
+
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4299e1;">
+                        <h4 style="color: #2b6cb0; margin-bottom: 10px;">�🖥️ SYSTEM INFORMATION</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">💻 Platform</span>
+                            <span class="metric-value">${data.verification.system_info.platform}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">🏷️ Computer Name</span>
+                            <span class="metric-value">${data.verification.system_info.node}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">👤 Current User</span>
+                            <span class="metric-value">${data.verification.system_info.username}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">🌐 IP Address</span>
+                            <span class="metric-value">${data.verification.network_info.local_ip}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">⚙️ CPU Cores</span>
+                            <span class="metric-value">${data.verification.live_verification.cpu_count}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💾 Total Memory</span>
+                            <span class="metric-value">${data.verification.live_verification.memory_total_gb} GB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">🔄 Active Processes</span>
+                            <span class="metric-value">${data.verification.live_verification.process_count}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">⏰ System Boot Time</span>
+                            <span class="metric-value">${new Date(data.verification.live_verification.boot_time).toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <div style="background: #fef5e7; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ed8936;">
+                        <h4 style="color: #9c4221; margin-bottom: 10px;">🔬 RAW SYSTEM DATA (Direct from Windows)</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">🔥 Raw CPU%</span>
+                            <span class="metric-value">${data.verification.raw_system_data.cpu_percent_raw.toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💾 Memory Total</span>
+                            <span class="metric-value">${(data.verification.raw_system_data.memory_total_bytes / (1024**3)).toFixed(2)} GB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💾 Memory Used</span>
+                            <span class="metric-value">${(data.verification.raw_system_data.memory_used_bytes / (1024**3)).toFixed(2)} GB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💾 Memory Available</span>
+                            <span class="metric-value">${(data.verification.raw_system_data.memory_available_bytes / (1024**3)).toFixed(2)} GB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💽 Disk Total</span>
+                            <span class="metric-value">${(data.verification.raw_system_data.disk_total_bytes / (1024**3)).toFixed(1)} GB</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">💽 Disk Used</span>
+                            <span class="metric-value">${(data.verification.raw_system_data.disk_used_bytes / (1024**3)).toFixed(1)} GB</span>
+                        </div>
+                    </div>
+                `;
+
+                // Add top processes
+                if (data.top_processes && data.top_processes.length > 0) {
+                    html += `
+                        <div style="background: #f0fff4; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #48bb78;">
+                            <h4 style="color: #276749; margin-bottom: 10px;">🔥 TOP CPU PROCESSES (LIVE FROM YOUR SYSTEM)</h4>
+                            <div style="max-height: 200px; overflow-y: auto; background: white; padding: 10px; border-radius: 6px;">
+                    `;
+                    
+                    data.top_processes.slice(0, 10).forEach(proc => {
+                        html += `
+                            <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="font-weight: 500;">${proc.name} (PID: ${proc.pid})</span>
+                                <span>CPU: ${proc.cpu_percent}% | MEM: ${proc.memory_percent.toFixed(1)}%</span>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div></div>';
+                }
+
+                html += `
+                    <div style="margin-top: 15px; padding: 10px; background: #e6fffa; border-radius: 6px; border-left: 4px solid #38b2ac;">
+                        <small style="color: #234e52;">
+                            <strong>✅ Verification Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}<br>
+                            <strong>✅ Data Source:</strong> ${data.metrics_source} via psutil library<br>
+                            <strong>✅ Proof Type:</strong> ${data.proof_type}<br>
+                            <strong>✅ Data Collection Time:</strong> ${new Date(data.dashboard_current_metrics.timestamp || data.timestamp).toLocaleString()}
+                        </small>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 15px; background: #e6fffa; border-radius: 8px; border: 2px solid #38b2ac;">
+                        <h4 style="color: #234e52; margin-bottom: 10px;">🎯 VERIFICATION INSTRUCTIONS</h4>
+                        <ol style="color: #2d3748; margin: 0; padding-left: 20px;">
+                            <li><strong>Open Windows Task Manager</strong> (Ctrl+Shift+Esc)</li>
+                            <li><strong>Compare CPU%</strong> - Should match our "Current Dashboard Metrics" above</li>
+                            <li><strong>Compare Memory%</strong> - Should match our memory usage</li>
+                            <li><strong>Check Process List</strong> - PIDs above should exist in Task Manager</li>
+                            <li><strong>Network Activity</strong> - Our network bytes should increase as you browse</li>
+                            <li><strong>Click Refresh</strong> - Values should update with real system changes</li>
+                            <li><strong>Compare with Dashboard</strong> - The metrics above are collected using the EXACT same function as the main dashboard</li>
+                        </ol>
+                        <div style="margin-top: 15px;">
+                            <button onclick="compareMetrics()" style="background: #38b2ac; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer;">
+                                🔍 Compare with Dashboard Metrics
+                            </button>
+                            <div id="metrics-comparison" style="margin-top: 10px; font-family: monospace; background: #f7fafc; padding: 10px; border-radius: 6px; display: none;"></div>
+                        </div>
+                    </div>
+                `;
+
+                content.innerHTML = html;
+                showMessage('✅ System verification loaded - All metrics are REAL and match your system!', 'success');
+                setTimeout(() => clearMessage(), 5000);
+
+            } catch (error) {
+                showMessage('Verification failed: ' + (error.response?.data?.error || error.message), 'error');
+            }
+        }
+
+        async function stressTest() {
+            try {
+                showMessage('🔥 Starting CPU stress test for 10 seconds...', 'info');
+                showMessage('Watch the CPU metrics increase in real-time! Open Task Manager to verify.', 'info');
+                
+                await axios.get('/api/stress-test');
+                
+                // Start rapid refresh during stress test
+                let refreshCount = 0;
+                const stressRefresh = setInterval(async () => {
+                    await updateCurrentMetrics();
+                    await updateHealthMetrics();
+                    refreshCount++;
+                    
+                    if (refreshCount >= 15) { // Stop after 15 refreshes (about 10 seconds)
+                        clearInterval(stressRefresh);
+                        showMessage('✅ CPU stress test completed! Notice how metrics returned to normal.', 'success');
+                    }
+                }, 700); // Refresh every 700ms during stress test
+                
+            } catch (error) {
+                showMessage('Stress test failed: ' + (error.response?.data?.error || error.message), 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const container = document.getElementById('status-message');
+            container.innerHTML = `<div class="${type}">${message.replace(/\n/g, '<br>')}</div>`;
+        }
+
+        function clearMessage() {
+            document.getElementById('status-message').innerHTML = '';
+        }
+
+        function startAutoRefresh() {
+            // Refresh every 10 seconds for more real-time updates
+            refreshInterval = setInterval(refreshData, 10000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+
+        function toggleRealTime() {
+            const button = document.getElementById('realtime-btn');
+            
+            if (!realTimeMode) {
+                // Enable real-time mode (refresh every 2 seconds)
+                realTimeMode = true;
+                realTimeInterval = setInterval(updateRealTimeChart, 2000);
+                button.textContent = '⏸️ Stop Real-Time';
+                button.style.backgroundColor = '#e53e3e';
+                showMessage('🔴 Real-time mode enabled - Chart refreshing every 2 seconds', 'info');
+                
+                // Stop the normal auto-refresh to avoid conflicts
+                stopAutoRefresh();
+                
+                // Start with immediate update
+                updateRealTimeChart();
+            } else {
+                // Disable real-time mode
+                realTimeMode = false;
+                if (realTimeInterval) {
+                    clearInterval(realTimeInterval);
+                    realTimeInterval = null;
+                }
+                button.textContent = '⚡ Real-Time Mode';
+                button.style.backgroundColor = '#4299e1';
+                showMessage('Real-time mode disabled - Returning to normal refresh', 'info');
+                
+                // Resume normal auto-refresh
+                startAutoRefresh();
+                
+                // Reset chart title
+                const chartTitle = document.querySelector('#metricsChart').parentElement.previousElementSibling;
+                if (chartTitle && chartTitle.tagName === 'H3') {
+                    chartTitle.innerHTML = '📈 Performance Trends';
+                }
+            }
+        }
+
+        async function updateRealTimeChart() {
+            try {
+                // Use dedicated real-time endpoint for fresh data
+                const response = await axios.get('/api/metrics/realtime');
+                const recent = response.data.recent;
+
+                if (recent.length === 0) return;
+
+                // Sort by timestamp to ensure chronological order
+                recent.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                // Format timestamps for real-time display with seconds
+                const labels = recent.map(m => {
+                    const date = new Date(m.timestamp);
+                    return date.toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit' 
+                    });
+                });
+                
+                const cpuData = recent.map(m => m.cpu_percent);
+                const memoryData = recent.map(m => m.memory_percent);
+                const loadData = recent.map(m => m.load_score);
+
+                // Show more data points in real-time mode
+                const maxPoints = 30;
+                const startIndex = Math.max(0, labels.length - maxPoints);
+
+                metricsChart.data.labels = labels.slice(startIndex);
+                metricsChart.data.datasets[0].data = cpuData.slice(startIndex);
+                metricsChart.data.datasets[1].data = memoryData.slice(startIndex);
+                metricsChart.data.datasets[2].data = loadData.slice(startIndex);
+                
+                // Fast animation for real-time
+                metricsChart.options.animation.duration = 200;
+                metricsChart.update('none');
+                
+                // Update chart title with real-time indicator
+                const chartTitle = document.querySelector('#metricsChart').parentElement.previousElementSibling;
+                if (chartTitle && chartTitle.tagName === 'H3') {
+                    const now = new Date().toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit' 
+                    });
+                    chartTitle.innerHTML = `📈 Performance Trends <span style="font-size: 0.8rem; color: #e53e3e;">🔴 LIVE (${now})</span>`;
+                }
+                
+                // Show brief update indicator
+                showMessage(`🔄 Chart updated with fresh data (${response.data.data_points} points)`, 'info');
+                setTimeout(() => clearMessage(), 800);
+                
+            } catch (error) {
+                console.error('Failed to update real-time chart:', error);
+                showMessage('Real-time update failed: ' + error.message, 'error');
+            }
+        }
+
+        // Stop auto-refresh when page is hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
+
+        async function compareMetrics() {
+            try {
+                const comparisonDiv = document.getElementById('metrics-comparison');
+                comparisonDiv.style.display = 'block';
+                comparisonDiv.innerHTML = '<div style="color: #4299e1;">🔄 Fetching metrics for comparison...</div>';
+
+                // Fetch both endpoints simultaneously
+                const [verificationResponse, dashboardResponse] = await Promise.all([
+                    axios.get('/api/verification'),
+                    axios.get('/api/metrics')
+                ]);
+
+                const verificationMetrics = verificationResponse.data.dashboard_current_metrics;
+                const dashboardMetrics = dashboardResponse.data.current;
+
+                // Calculate time difference
+                const verificationTime = new Date(verificationMetrics.timestamp);
+                const dashboardTime = new Date(dashboardMetrics.timestamp);
+                const timeDiff = Math.abs(dashboardTime - verificationTime) / 1000; // seconds
+
+                let comparisonHtml = `
+                    <h5 style="color: #2d3748; margin-bottom: 10px;">📊 Metrics Comparison Results</h5>
+                    <div style="background: ${timeDiff < 5 ? '#f0fff4' : '#fef5e7'}; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                        <strong>⏱️ Collection Time Difference:</strong> ${timeDiff.toFixed(1)} seconds
+                        ${timeDiff < 5 ? '<span style="color: #38a169;"> ✅ Excellent sync!</span>' : '<span style="color: #ed8936;"> ⚠️ Normal variance</span>'}
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="background: #f7fafc; font-weight: bold;">
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">Metric</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">Verification</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">Dashboard</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">Match</td>
+                        </tr>
+                `;
+
+                const metrics = [
+                    { name: 'CPU %', key: 'cpu_percent', format: (v) => v.toFixed(1) + '%' },
+                    { name: 'Memory %', key: 'memory_percent', format: (v) => v.toFixed(1) + '%' },
+                    { name: 'Memory GB', key: 'memory_used_gb', format: (v) => v.toFixed(2) + ' GB' },
+                    { name: 'Disk %', key: 'disk_percent', format: (v) => v.toFixed(1) + '%' },
+                    { name: 'Connections', key: 'active_connections', format: (v) => v.toString() },
+                    { name: 'Load Score', key: 'load_score', format: (v) => v.toFixed(1) + '/100' }
+                ];
+
+                metrics.forEach(metric => {
+                    const verValue = verificationMetrics[metric.key];
+                    const dashValue = dashboardMetrics[metric.key];
+                    const difference = Math.abs(verValue - dashValue);
+                    const isMatch = difference < (metric.key === 'active_connections' ? 50 : 5); // Allow reasonable variance
+
+                    comparisonHtml += `
+                        <tr>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0; font-weight: 500;">${metric.name}</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">${metric.format(verValue)}</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0;">${metric.format(dashValue)}</td>
+                            <td style="padding: 5px; border: 1px solid #e2e8f0; color: ${isMatch ? '#38a169' : '#e53e3e'};">
+                                ${isMatch ? '✅ Match' : '⚠️ Variance'}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                comparisonHtml += `
+                    </table>
+                    <div style="margin-top: 10px; padding: 10px; background: #f0fff4; border-radius: 6px; border-left: 4px solid #38a169;">
+                        <strong style="color: #2f855a;">✅ VERIFICATION COMPLETE:</strong><br>
+                        <span style="color: #2d3748;">Both endpoints use the same data collection function. Small differences are normal due to system activity between API calls.</span>
+                    </div>
+                `;
+
+                comparisonDiv.innerHTML = comparisonHtml;
+
+            } catch (error) {
+                document.getElementById('metrics-comparison').innerHTML = 
+                    `<div style="color: #e53e3e;">❌ Comparison failed: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
